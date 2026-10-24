@@ -1,0 +1,41 @@
+/* Firefox (uses separate properties) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #4c1d95 #05050A; /* thumb color | track color */
+}
+
+/* Chrome, Edge, and Safari */
+::-webkit-scrollbar {
+  width: 6px;  /* Vertical scrollbar width */
+  height: 6px; /* Horizontal scrollbar height */
+}
+
+/* The background track */
+::-webkit-scrollbar-track {
+  background: transparent; /* Keeps it clean on your dark backgrounds */
+  margin: 4px 0;
+}
+
+/* The moving handle (thumb) */
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1); /* Subtle gray by default */
+  border-radius: 9999px; /* Fully rounded pill shape */
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.05); /* Tiny border for definition */
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #7c3aed; /* Violet-600 to match your buttons/accents */
+  cursor: pointer;
+}
+
+/* Handle on click/active */
+::-webkit-scrollbar-thumb:active {
+  background: #8b5cf6; /* Violet-500 (Brighter) */
+}
+
+/* Corner junction */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
