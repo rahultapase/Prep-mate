@@ -1,10 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { BrainCircuit, UploadCloud, FileText, User, Briefcase, Building2, Layers, ClipboardList, Plus, Minus, ArrowLeft, ArrowRight } from 'lucide-react';
+import { BrainCircuit, UploadCloud, FileText, User, Briefcase, Building2, Layers, ClipboardList, Plus, Minus, ArrowLeft, ArrowRight, FileUp, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useInputSanitization } from '../utils/sanitization';
 import { useAuth } from '../hooks/useAuth';
+import { extractPdfText, PdfResumeError } from '../utils/pdfResume';
 
 const interviewTypes = ['Technical', 'HR', 'Managerial'];
+const RESUME_MAX_LENGTH = 10000;
+
+// Textarea sanitization: strip HTML tags and risky characters but keep spacing
+const sanitizeTextarea = (value: string) =>
+  value
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/[<>"'`=]/g, '') // Remove dangerous characters
+    .replace(/javascript:/gi, '') // Remove javascript: protocol
+    .replace(/on\w+\s*=/gi, ''); // Remove event handlers
 
 export default function Interview() {
   const { logout } = useAuth();
@@ -72,12 +82,7 @@ export default function Interview() {
         break;
       case 'jobDescription':
       case 'resumeText': {
-        // For textareas, only remove HTML tags and dangerous characters but preserve spaces
-        sanitizedValue = value
-          .replace(/<[^>]*>/g, '') // Remove HTML tags
-          .replace(/[<>"'`=]/g, '') // Remove dangerous characters
-          .replace(/javascript:/gi, '') // Remove javascript: protocol
-          .replace(/on\w+\s*=/gi, ''); // Remove event handlers
+        sanitizedValue = sanitizeTextarea(value);
         break;
       }
       case 'experience':
@@ -102,6 +107,41 @@ export default function Interview() {
     }
     
     setForm(f => ({ ...f, [name]: sanitizedValue }));
+  };
+
+  // PDF resume upload: the text is extracted in the browser and fills the textarea for review
+  const [pdfState, setPdfState] = useState({ loading: false, fileName: '', error: '', warning: '' });
+
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow choosing the same file again
+    if (!file) return;
+
+    setPdfState({ loading: true, fileName: file.name, error: '', warning: '' });
+    try {
+      const text = sanitizeTextarea(await extractPdfText(file)).trim();
+      if (!text) {
+        throw new PdfResumeError('This PDF has no selectable text, please paste your resume.');
+      }
+      const trimmed = text.length > RESUME_MAX_LENGTH;
+      setForm(f => ({ ...f, resumeText: text.slice(0, RESUME_MAX_LENGTH) }));
+      setError('');
+      setPdfState({
+        loading: false,
+        fileName: file.name,
+        error: '',
+        warning: trimmed
+          ? `Your resume had ${text.length.toLocaleString()} characters, so it was trimmed to ${RESUME_MAX_LENGTH.toLocaleString()}. Please review it below.`
+          : '',
+      });
+    } catch (err) {
+      setPdfState({
+        loading: false,
+        fileName: '',
+        error: err instanceof PdfResumeError ? err.message : 'Could not read this PDF. Please paste your resume instead.',
+        warning: '',
+      });
+    }
   };
 
   const incrementExperience = () => {
@@ -143,7 +183,7 @@ export default function Interview() {
     
     // Check if resume is uploaded
     if (!form.resumeText.trim()) {
-      setError('Please paste your resume text before proceeding.');
+      setError('Please paste your resume or upload a PDF before proceeding.');
       return;
     }
     
@@ -432,26 +472,59 @@ export default function Interview() {
 
               {/* Resume */}
               <div className="space-y-1.5 md:col-span-2">
-                <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
-                  <UploadCloud className="w-3.5 h-3.5" />
-                  Resume Content
-                </label>
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="resumeText" className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                    <UploadCloud className="w-3.5 h-3.5" aria-hidden="true" />
+                    Resume Content
+                  </label>
+                  {/* The visible label is the button; the real file input is visually hidden but still focusable */}
+                  <label
+                    htmlFor="resumePdf"
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all focus-within:ring-2 focus-within:ring-violet-500/60 ${
+                      pdfState.loading
+                        ? 'cursor-wait text-slate-400 bg-slate-800/50 border-slate-700'
+                        : 'cursor-pointer text-violet-300 bg-violet-500/10 border-violet-500/30 hover:bg-violet-500/20 hover:border-violet-500/50'
+                    }`}
+                  >
+                    {pdfState.loading
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                      : <FileUp className="w-3.5 h-3.5" aria-hidden="true" />}
+                    {pdfState.loading ? 'Reading PDF...' : 'Upload PDF'}
+                    <input
+                      id="resumePdf"
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      className="sr-only"
+                      onChange={handleResumeUpload}
+                      disabled={pdfState.loading}
+                      aria-describedby="resumePdfStatus"
+                    />
+                  </label>
+                </div>
                 <textarea
+                  id="resumeText"
                   name="resumeText"
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500 transition-all resize-none custom-scrollbar"
-                  placeholder="Paste your resume content..."
+                  placeholder="Paste your resume content or upload a PDF..."
                   rows={3}
                   value={form.resumeText}
                   onChange={handleChange}
                   required
-                  maxLength={10000}
+                  maxLength={RESUME_MAX_LENGTH}
                   style={{
                     scrollbarWidth: 'thin',
                     scrollbarColor: '#6366f1 transparent'
                   }}
                 />
-                <div className="flex justify-end text-xs text-slate-500">
-                  <span>{form.resumeText.length}/10000</span>
+                <div className="flex items-start justify-between gap-3 text-xs">
+                  <div id="resumePdfStatus" aria-live="polite" className="min-h-[1rem]">
+                    {pdfState.error && <span className="text-red-400">{pdfState.error}</span>}
+                    {!pdfState.error && pdfState.warning && <span className="text-amber-400">{pdfState.warning}</span>}
+                    {!pdfState.error && !pdfState.warning && pdfState.fileName && !pdfState.loading && (
+                      <span className="text-green-400">Loaded text from {pdfState.fileName}. You can edit it below.</span>
+                    )}
+                  </div>
+                  <span className="text-slate-500 shrink-0">{form.resumeText.length}/{RESUME_MAX_LENGTH}</span>
                 </div>
               </div>
             </div>
