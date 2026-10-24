@@ -148,7 +148,6 @@ export default function Livesession() {
 
   // Function to end session and clear all session data
   const [isSessionEnded, setIsSessionEnded] = useState(false);
-  const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
   const [isProcessingFeedback, setIsProcessingFeedback] = useState(false);
 
   const handleEndSession = async () => {
@@ -160,7 +159,6 @@ export default function Livesession() {
 
     setIsProcessingFeedback(true); // Set processing flag
     setIsSessionEnded(true);
-    setIsFeedbackLoading(true);
     setTimerStarted(false); // stop timer
     setAnswerTimerStarted(false); // stop answer timer
     if (window.speechSynthesis) window.speechSynthesis.cancel(); // stop TTS
@@ -209,7 +207,6 @@ export default function Livesession() {
       const errorMessage = e instanceof Error ? e.message : 'Failed to generate feedback.';
       alert(errorMessage);
       setShowRatingModal(true);
-      setIsFeedbackLoading(false);
     } finally {
       setIsProcessingFeedback(false); // Reset processing flag
     }
@@ -221,7 +218,9 @@ export default function Livesession() {
       try {
         const form = JSON.parse(saved);
         setInterviewType(form.interviewType || '');
-      } catch (e: any) { }
+      } catch {
+        // Malformed form data: keep the default interview type
+      }
     }
   }, []);
 
@@ -514,8 +513,8 @@ Important Instructions:
         setTranscript(prev => prev + finalTranscript);
       }
     };
-    recognition.onerror = (event: any) => {
-      // Optionally handle errors
+    recognition.onerror = () => {
+      // Recognition errors (e.g. no speech) are non-fatal; the user can keep answering
     };
     recognitionRef.current = recognition;
     recognition.start();
@@ -650,7 +649,6 @@ Important Instructions:
 
     // Create different prompts based on interview type
     let prompt = '';
-    let jsonStructure = '';
 
     if (interviewType === 'HR' || interviewType === 'Behavioral') {
       // HR and Behavioral interviews - focus on soft skills, no technical scores
@@ -766,7 +764,6 @@ IMPORTANT: Return ONLY the JSON object above. Do NOT add any extra text, explana
     return () => {
       setIsProcessingFeedback(false);
       setIsSessionEnded(false);
-      setIsFeedbackLoading(false);
     };
   }, []);
 

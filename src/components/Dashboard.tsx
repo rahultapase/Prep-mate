@@ -75,7 +75,6 @@ export default function Dashboard() {
   const [editMode, setEditMode] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const email = user?.email || '';
 
   // Modal close on outside click
   const modalRef = useRef<HTMLDivElement>(null);

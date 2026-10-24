@@ -17,7 +17,7 @@ export const sanitizeHtml = (input: string): string => {
 };
 
 // Validate and sanitize text input
-export const validateTextInput = (input: string, maxLength: number = 1000): ValidationResult => {
+export const validateTextInput = (input: string, maxLength = 1000): ValidationResult => {
   if (!input || typeof input !== 'string') {
     return { isValid: false, message: 'Input is required' };
   }
@@ -148,7 +148,7 @@ export class RateLimiter {
   private maxAttempts: number;
   private windowMs: number;
 
-  constructor(maxAttempts: number = 5, windowMs: number = 60000) {
+  constructor(maxAttempts = 5, windowMs = 60000) {
     this.maxAttempts = maxAttempts;
     this.windowMs = windowMs;
   }

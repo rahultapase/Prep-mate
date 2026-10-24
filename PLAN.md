@@ -71,9 +71,9 @@ Every endpoint except `login` and `health` requires a valid session cookie.
   - `OLLAMA_MODEL=gemma4:e2b`
   - `OLLAMA_NUM_CTX=16384`
   - `OLLAMA_TIMEOUT_MS=180000`
-  - `DEMO_EMAIL=demo@prepmate.local`
+  - `DEMO_EMAIL=rahul@prepmate.local`
   - `DEMO_PASSWORD=demo1234`
-  - `DEMO_NAME=Demo User`
+  - `DEMO_NAME=Rahul`
 
 Done when: Gemma 4 answers in the terminal, and `.env` no longer contains any Firebase or Gemini keys.
 

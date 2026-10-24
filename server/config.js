@@ -31,8 +31,8 @@ export const config = {
     timeoutMs: toInt(process.env.OLLAMA_TIMEOUT_MS, 180000),
   },
   demo: {
-    email: (process.env.DEMO_EMAIL || 'demo@prepmate.local').trim().toLowerCase(),
+    email: (process.env.DEMO_EMAIL || 'rahul@prepmate.local').trim().toLowerCase(),
     password: process.env.DEMO_PASSWORD || 'demo1234',
-    name: process.env.DEMO_NAME || 'Demo User',
+    name: process.env.DEMO_NAME || 'Rahul',
   },
 };

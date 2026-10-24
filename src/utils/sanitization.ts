@@ -19,7 +19,7 @@ export const sanitizeHTML = (input: string): string => {
   }
 
   return input
-    .replace(/[&<>"'`=\/]/g, (char) => HTML_ENTITIES[char] || char)
+    .replace(/[&<>"'`=/]/g, (char) => HTML_ENTITIES[char] || char)
     .replace(/\s+/g, ' ') // Normalize whitespace
     .trim();
 };
@@ -32,7 +32,7 @@ export const sanitizeText = (input: string): string => {
 
   return input
     .replace(/<[^>]*>/g, '') // Remove all HTML tags
-    .replace(/[&<>"'`=\/]/g, (char) => HTML_ENTITIES[char] || char)
+    .replace(/[&<>"'`=/]/g, (char) => HTML_ENTITIES[char] || char)
     .replace(/\s+/g, ' ') // Normalize whitespace
     .trim();
 };

@@ -5,7 +5,7 @@ import { Lock, ArrowRight, Eye, EyeOff, UserCheck } from 'lucide-react';
 import { Header } from './Header';
 
 // Default demo account seeded by the server (see DEMO_EMAIL / DEMO_PASSWORD in .env)
-const DEMO_EMAIL = 'demo@prepmate.local';
+const DEMO_EMAIL = 'rahul@prepmate.local';
 const DEMO_PASSWORD = 'demo1234';
 
 export default function Login() {
