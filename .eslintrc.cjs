@@ -15,4 +15,15 @@ module.exports = {
       { allowConstantExport: true },
     ],
   },
+  overrides: [
+    {
+      // Express backend runs in Node, not the browser
+      files: ['server/**/*.js'],
+      env: { node: true, browser: false, es2022: true },
+      parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
+      rules: {
+        '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      },
+    },
+  ],
 }
