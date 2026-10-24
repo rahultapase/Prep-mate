@@ -6,16 +6,33 @@ import {
 import { useNavigate } from 'react-router-dom';
 import Lottie from "lottie-react";
 import childboyAnimation from "../assets/childboy.json";
-import { addDoc, collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "../firebase";
-import { useAuth } from '../hooks/useAuth';
 import Feedback from './Feedback';
-import { API_ENDPOINTS } from '../config/api';
+import { countInterviews, saveInterview } from '../services/data';
+import { feedbackSchema, generateJson, generateText, parseQuestionList } from '../services/ai';
+
+interface SavedSession {
+  questions: string[];
+  answers: string[];
+  currentQuestionIdx: number;
+}
+
+// Read an in-progress session (after a page refresh). Used as initial state, not in an effect,
+// so React StrictMode's double effects can't overwrite it with empty arrays.
+function readSavedSession(): SavedSession {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem('liveSessionState') || '{}');
+    return {
+      questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+      answers: Array.isArray(parsed.answers) ? parsed.answers : [],
+      currentQuestionIdx: typeof parsed.currentQuestionIdx === 'number' ? parsed.currentQuestionIdx : 0,
+    };
+  } catch {
+    return { questions: [], answers: [], currentQuestionIdx: 0 };
+  }
+}
 
 export default function Livesession() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [apiKey, setApiKey] = useState<string | null>(null);
   // Fetch interview type from sessionStorage (set in previous form)
   const [interviewType, setInterviewType] = useState('');
   const [timerStarted, setTimerStarted] = useState(false);
@@ -29,9 +46,10 @@ export default function Livesession() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Session state: questions, answers, timer
-  const [questions, setQuestions] = useState<string[]>([]);
-  const [answers, setAnswers] = useState<string[]>([]);
-  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+  const [savedSession] = useState(readSavedSession);
+  const [questions, setQuestions] = useState<string[]>(savedSession.questions);
+  const [answers, setAnswers] = useState<string[]>(savedSession.answers);
+  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(savedSession.currentQuestionIdx);
 
   // Feedback modal state
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -109,19 +127,6 @@ export default function Livesession() {
 
 
 
-  // Restore session state from sessionStorage on mount
-  useEffect(() => {
-    const saved = sessionStorage.getItem('liveSessionState');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.questions) setQuestions(parsed.questions);
-        if (parsed.answers) setAnswers(parsed.answers);
-        if (typeof parsed.currentQuestionIdx === 'number') setCurrentQuestionIdx(parsed.currentQuestionIdx);
-      } catch (e: any) { }
-    }
-  }, []);
-
   // Persist session state to sessionStorage whenever it changes
   useEffect(() => {
     sessionStorage.setItem('liveSessionState', JSON.stringify({
@@ -180,37 +185,25 @@ export default function Livesession() {
         answeredPairs.map(p => p.question),
         answeredPairs.map(p => p.answer)
       );
-      setShowRatingModal(true);
-      // Save to Firestore
-      const userEmail = sessionStorage.getItem('userEmail') || user?.email || null;
       const userInputs = (() => {
         try {
           const formData = sessionStorage.getItem('interviewForm');
-          const parsed = formData ? JSON.parse(formData) : {};
-          // Ensure user email is included in userInputs for better tracking
-          return {
-            ...parsed,
-            email: userEmail
-          };
-        } catch (e) {
-          return { email: userEmail };
+          return formData ? JSON.parse(formData) : {};
+        } catch {
+          return {};
         }
       })();
 
-      const feedbackData = {
+      // Saved before the rating modal opens so the Dashboard always has it.
+      // The server attaches the logged-in user and timestamp.
+      await saveInterview({
         feedback,
-        interviewType: interviewType,
-        // Include the actual questions and answers
+        interviewType: interviewType || userInputs.interviewType || 'Technical',
         questions: answeredPairs.map(p => p.question),
         answers: answeredPairs.map(p => p.answer),
-        // Get all user input data from sessionStorage with email included
         userInputs,
-        timestamp: new Date().toISOString(),
-        user: userEmail // Ensure user email is set
-      };
-
-      await addDoc(collection(db, "interviewFeedbacks"), feedbackData);
-      console.log('Feedback saved successfully to Firestore with user email:', userEmail);
+      });
+      setShowRatingModal(true);
     } catch (e) {
       console.error('Error generating or saving feedback:', e);
       const errorMessage = e instanceof Error ? e.message : 'Failed to generate feedback.';
@@ -232,21 +225,6 @@ export default function Livesession() {
     }
   }, []);
 
-  // On mount, check for Gemini API key from environment or sessionStorage
-  useEffect(() => {
-    const envKey = import.meta.env.VITE_GEMINI_API_KEY;
-    const sessionKey = sessionStorage.getItem('geminiApiKey');
-
-    const key = envKey || sessionKey;
-
-    if (!key) {
-      navigate('/system-check', { replace: true });
-    } else {
-      setApiKey(key);
-      // Store in session for consistency
-      sessionStorage.setItem('geminiApiKey', key);
-    }
-  }, [navigate]);
 
   // On mount, restore timeLeft from sessionStorage if available
   useEffect(() => {
@@ -336,17 +314,14 @@ export default function Livesession() {
     };
   }, [videoStream]);
 
-  // On mount, check for Gemini API key in sessionStorage
+  // No interview form means the user skipped the setup steps
   useEffect(() => {
-    const key = sessionStorage.getItem('geminiApiKey');
-    if (!key) {
-      navigate('/system-check', { replace: true });
-    } else {
-      setApiKey(key);
+    if (!sessionStorage.getItem('interviewForm')) {
+      navigate('/interview', { replace: true });
     }
   }, [navigate]);
 
-  // Helper to build the Gemini prompt
+  // Helper to build the interview prompt
   interface InterviewUserData {
     interviewType: string;
     company: string;
@@ -359,7 +334,7 @@ export default function Livesession() {
     extraNote?: string;
   }
 
-  function buildGeminiPrompt({ interviewType, company, name, graduation, role, experience, jobDescription, resumeText, extraNote, sessionCount = 0 }: InterviewUserData & { extraNote?: string; sessionCount?: number }) {
+  function buildInterviewPrompt({ interviewType, company, name, graduation, role, experience, jobDescription, resumeText, extraNote, sessionCount = 0 }: InterviewUserData & { extraNote?: string; sessionCount?: number }) {
     const difficultyNote = sessionCount >= 5 ?
       `\n\nIMPORTANT: This candidate has completed ${sessionCount} previous ${interviewType} interview sessions. Please generate more challenging and advanced questions appropriate for an experienced candidate. Focus on complex scenarios, leadership challenges, crisis management, advanced behavioral situations, and sophisticated problem-solving scenarios.` :
       '';
@@ -394,16 +369,8 @@ Important Instructions:
   // Function to get user's completed interview sessions count
   async function getCompletedSessionsCount(interviewType: string): Promise<number> {
     try {
-      const userEmail = sessionStorage.getItem('userEmail') || '';
-      if (!userEmail) return 0;
-
-      const q = query(
-        collection(db, 'interviewFeedbacks'),
-        where('user', '==', userEmail),
-        where('interviewType', '==', interviewType)
-      );
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.size;
+      if (!interviewType) return 0;
+      return await countInterviews(interviewType);
     } catch (error) {
       console.error('Error getting completed sessions count:', error);
       return 0;
@@ -454,48 +421,15 @@ Important Instructions:
 - Return only the list of questions, one per line, no explanations or formatting${difficultyNote}`;
   }
 
-  // Function to call Gemini API and generate questions
+  // Generate the interview questions with the local Gemma model
   async function generateInterviewQuestions(userData: InterviewUserData) {
     // Get completed sessions count for this interview type
     const sessionCount = await getCompletedSessionsCount(userData.interviewType);
     console.log(`Completed ${sessionCount} sessions for ${userData.interviewType} interviews`);
 
-    const prompt = buildGeminiPrompt({ ...userData, sessionCount });
-    const userApiKey = sessionStorage.getItem('geminiApiKey');
-    if (!userApiKey) {
-      throw new Error('API key not found. Please configure your API key first.');
-    }
-
-    const res = await fetch(API_ENDPOINTS.GEMINI, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: prompt,
-        model: 'gemini-2.5-flash',
-        userApiKey: userApiKey
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to generate questions');
-    }
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    console.log('Gemini API response:', text);
-    // Try to extract questions from numbered/bulleted/dashed list
-    let questions = text.split('\n')
-      .map((l: string) => l.trim())
-      .filter((l: string) => /^(\d+\.|[-•])\s?.+\?$/.test(l));
-    console.log('Extracted numbered/bulleted questions:', questions);
-    // Fallback: lines that end with a question mark and are not too short
-    if (questions.length === 0) {
-      questions = text.split('\n')
-        .map((l: string) => l.trim())
-        .filter((l: string) => l.length > 10 && /\?$/.test(l));
-      console.log('Fallback extracted questions:', questions);
-    }
-    // Final fallback: show the whole text
-    return questions.length > 0 ? questions : [text];
+    const prompt = buildInterviewPrompt({ ...userData, sessionCount });
+    const text = await generateText(prompt);
+    return parseQuestionList(text);
   }
 
   // State for loading and error
@@ -503,15 +437,19 @@ Important Instructions:
   const [questionError, setQuestionError] = useState('');
   const [sessionCount, setSessionCount] = useState<number>(0);
 
-  // On mount, if no questions, call Gemini API to generate them
+  // Prevents a duplicate request (React StrictMode runs effects twice in dev)
+  const generatingRef = useRef(false);
+
+  // When there are no questions (new session, or after the rating modal resets), ask Gemma for them
   useEffect(() => {
-    if (!apiKey) return;
     if (questions.length > 0) return;
+    if (generatingRef.current) return;
     // Gather user data from sessionStorage/interviewForm
     const formRaw = sessionStorage.getItem('interviewForm');
     if (!formRaw) return;
     let form;
     try { form = JSON.parse(formRaw); } catch (e: any) { return; }
+    generatingRef.current = true;
     setLoadingQuestions(true);
     setQuestionError('');
 
@@ -532,8 +470,23 @@ Important Instructions:
       })
       .then(qs => setQuestions(qs))
       .catch(err => setQuestionError(err.message))
-      .finally(() => setLoadingQuestions(false));
-  }, [apiKey, questions.length]);
+      .finally(() => {
+        generatingRef.current = false;
+        setLoadingQuestions(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions.length]);
+
+  // Show the completed-session count for this interview type in the header (also after a refresh)
+  useEffect(() => {
+    try {
+      const form = JSON.parse(sessionStorage.getItem('interviewForm') || '{}');
+      if (form.interviewType) getCompletedSessionsCount(form.interviewType).then(setSessionCount);
+    } catch {
+      // ignore malformed form data
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // TTS: Speech-to-Text logic
   const [transcript, setTranscript] = useState('');
@@ -647,48 +600,18 @@ Important Instructions:
     console.log(`Completed ${sessionCount} sessions for ${userData.interviewType} interviews (continuation)`);
 
     const prompt = buildContinuationPrompt({ ...userData, sessionCount });
-    const userApiKey = sessionStorage.getItem('geminiApiKey');
-    if (!userApiKey) {
-      throw new Error('API key not found. Please configure your API key first.');
-    }
-
-    const res = await fetch(API_ENDPOINTS.GEMINI, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: prompt,
-        model: 'gemini-2.5-flash',
-        userApiKey: userApiKey
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to generate continuation questions');
-    }
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    console.log('Continuation questions API response:', text);
-    // Try to extract questions from numbered/bulleted/dashed list
-    let questions = text.split('\n')
-      .map((l: string) => l.trim())
-      .filter((l: string) => /^(\d+\.|[-•])\s?.+\?$/.test(l));
-    console.log('Extracted continuation questions:', questions);
-    // Fallback: lines that end with a question mark and are not too short
-    if (questions.length === 0) {
-      questions = text.split('\n')
-        .map((l: string) => l.trim())
-        .filter((l: string) => l.length > 10 && /\?$/.test(l));
-      console.log('Fallback extracted continuation questions:', questions);
-    }
-    // Final fallback: show the whole text
-    return questions.length > 0 ? questions : [text];
+    const text = await generateText(prompt);
+    return parseQuestionList(text);
   }
 
   const handleGenerateMoreQuestions = async () => {
     setLoadingQuestions(true);
     setQuestionError('');
     const formRaw = sessionStorage.getItem('interviewForm');
-    if (!formRaw || !apiKey) return;
+    if (!formRaw) {
+      setLoadingQuestions(false);
+      return;
+    }
     let form;
     try { form = JSON.parse(formRaw); } catch (e: any) { setLoadingQuestions(false); return; }
 
@@ -833,43 +756,9 @@ Note: Only include questions that were actually answered by the user. Do not inc
 IMPORTANT: Return ONLY the JSON object above. Do NOT add any extra text, explanation, markdown, or formatting. Do NOT use triple backticks. Do NOT add any text before or after the JSON. The response must be a valid JSON object only.`;
     }
 
-    const userApiKey = sessionStorage.getItem('geminiApiKey');
-    if (!userApiKey) {
-      throw new Error('API key not found. Please configure your API key first.');
-    }
-
-    const res = await fetch(API_ENDPOINTS.GEMINI, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: prompt,
-        model: 'gemini-2.5-flash',
-        userApiKey: userApiKey
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to generate feedback');
-    }
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    let feedbackJson = null;
-    try {
-      feedbackJson = JSON.parse(text);
-    } catch (e: any) {
-      // Try to extract JSON object from the text (even if there's extra text/markdown)
-      const match = text.match(/{[\s\S]*}/);
-      if (match) {
-        try {
-          feedbackJson = JSON.parse(match[0]);
-        } catch (e: any) {
-          throw new Error('Failed to parse feedback JSON');
-        }
-      } else {
-        throw new Error('Failed to parse feedback JSON');
-      }
-    }
-    return feedbackJson;
+    // The schema makes Ollama return exactly the fields the Dashboard reads
+    const softSkills = interviewType === 'HR' || interviewType === 'Behavioral';
+    return generateJson<Record<string, unknown>>(prompt, feedbackSchema(softSkills));
   }
 
   // Cleanup effect to reset processing flags on unmount
@@ -1011,7 +900,11 @@ IMPORTANT: Return ONLY the JSON object above. Do NOT add any extra text, explana
 
               {loadingQuestions ? (
                 <div className="flex items-center justify-center flex-1 mt-6">
-                  <div className="text-slate-400 animate-pulse text-sm">Generating questions...</div>
+                  <div className="text-slate-400 animate-pulse text-sm text-center" role="status">
+                    Gemma is preparing your questions...
+                    <br />
+                    <span className="text-xs">Running locally, this can take up to a minute.</span>
+                  </div>
                 </div>
               ) : (
                 <div className="flex-1 mt-6">
@@ -1160,6 +1053,17 @@ IMPORTANT: Return ONLY the JSON object above. Do NOT add any extra text, explana
 
 
       {/* Feedback Modal */}
+      {/* Local feedback generation can take a while, so make it obvious something is happening */}
+      {isProcessingFeedback && !showRatingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" role="status" aria-live="polite">
+          <div className="bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4 text-center">
+            <div className="w-10 h-10 mx-auto mb-4 border-4 border-violet-500 border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
+            <h2 className="text-lg font-bold text-white mb-1">Reviewing your answers</h2>
+            <p className="text-sm text-slate-300">Gemma is preparing your feedback locally. This can take up to a minute.</p>
+          </div>
+        </div>
+      )}
+
       {showRatingModal && (
         <Feedback onClose={() => {
           setShowRatingModal(false);

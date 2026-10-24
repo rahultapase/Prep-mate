@@ -19,7 +19,6 @@
     "cookie-parser": "1.4.7",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "firebase": "^11.10.0",
     "framer-motion": "^12.23.0",
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.441.0",

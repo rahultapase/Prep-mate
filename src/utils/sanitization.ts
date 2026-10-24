@@ -78,24 +78,6 @@ export const sanitizeEmail = (input: string): string => {
   return email;
 };
 
-// Sanitize API keys (basic format validation)
-export const sanitizeApiKey = (input: string): string => {
-  if (typeof input !== 'string') {
-    return '';
-  }
-
-  const key = input.trim();
-  
-  // Basic API key validation (adjust based on your API key format)
-  const apiKeyRegex = /^[A-Za-z0-9_-]{20,}$/;
-  
-  if (!apiKeyRegex.test(key)) {
-    return '';
-  }
-
-  return key;
-};
-
 // Sanitize form inputs
 export const sanitizeFormInput = (input: string, type: 'text' | 'email' | 'url' | 'textarea' = 'text'): string => {
   if (typeof input !== 'string') {

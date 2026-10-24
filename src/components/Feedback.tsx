@@ -1,19 +1,7 @@
 import React, { useState } from 'react';
 import { BrainCircuit, Star, X, Send, MessageSquare } from 'lucide-react';
-import { addDoc, collection } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useNavigate } from 'react-router-dom';
-
-
-interface FeedbackData {
-  interviewExperience: number;
-  aiQuestionQuality: number;
-  userInterface: number;
-  overallSatisfaction: number;
-  experienceText: string;
-  timestamp: string;
-  userEmail?: string;
-}
+import { submitRating } from '../services/data';
 
 export default function Feedback({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
@@ -67,15 +55,8 @@ export default function Feedback({ onClose }: { onClose: () => void }) {
     setIsSubmitting(true);
 
     try {
-      const feedbackData: FeedbackData = {
-        ...ratings,
-        experienceText: experienceText.trim(),
-        timestamp: new Date().toISOString(),
-        userEmail: sessionStorage.getItem('userEmail') || undefined
-      };
-
-      // Save to Firestore
-      await addDoc(collection(db, 'userFeedback'), feedbackData);
+      // The server links the rating to the logged-in user
+      await submitRating({ ...ratings, experienceText: experienceText.trim() });
 
       setSubmitted(true);
       setTimeout(() => {

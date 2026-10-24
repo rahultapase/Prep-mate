@@ -2,8 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { BrainCircuit, User, Pencil, X, Sparkles, Zap, ArrowRight, AlertCircle, CheckCircle2, GraduationCap, Calendar, BookOpen, Briefcase, Target, Menu, Loader2, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { db } from '../firebase';
-import { setDoc, doc, getDoc } from 'firebase/firestore';
+import { getProfile, saveProfile } from '../services/data';
 import { FeaturesSection } from './FeaturesSection';
 import { HowItWorksSection } from './HowItWorksSection';
 import { AboutSection } from './AboutSection';
@@ -72,9 +71,8 @@ const Home = () =>{
         setLoadingProfile(true);
         setError('');
         try {
-          const docSnap = await getDoc(doc(db, 'users', user.uid));
-          if (docSnap.exists()) {
-            const data = docSnap.data();
+          const { exists, profile: data } = await getProfile();
+          if (exists) {
             setProfile({
               fullName: data.fullName || '',
               graduation: data.graduation || '',
@@ -105,11 +103,7 @@ const Home = () =>{
     if (!user?.uid) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'users', user.uid), {
-        ...profile,
-        email: user.email || '',
-        updatedAt: new Date().toISOString(),
-      });
+      await saveProfile(profile);
       setEditMode(false);
       setDataLoaded(true);
     } catch (err) {

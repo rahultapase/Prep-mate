@@ -2,8 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { BrainCircuit, User, Pencil, Trash2, X, AlertCircle, CheckCircle2, GraduationCap, Calendar, BookOpen, Briefcase, Target, Loader2, Mail, Search, Filter } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../firebase';
-import { setDoc, doc, getDoc, collection, query, where, getDocs, orderBy, deleteDoc } from 'firebase/firestore';
+import { getProfile, saveProfile, listInterviews, deleteInterview } from '../services/data';
 import Footer from './Footer';
 
 interface QuestionDetail {
@@ -90,7 +89,7 @@ export default function Dashboard() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [profileOpen]);
 
-  // Fetch profile from Firestore when modal opens
+  // Fetch profile when the modal opens
   React.useEffect(() => {
     const fetchProfile = async () => {
       if (profileOpen && user?.uid) {
@@ -98,9 +97,8 @@ export default function Dashboard() {
         setEditMode(false);
         setError('');
         try {
-          const docSnap = await getDoc(doc(db, 'users', user.uid));
-          if (docSnap.exists()) {
-            const data = docSnap.data();
+          const { exists, profile: data } = await getProfile();
+          if (exists) {
             setProfile({
               fullName: data.fullName || '',
               graduation: data.graduation || '',
@@ -136,11 +134,7 @@ export default function Dashboard() {
     if (!user?.uid) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'users', user.uid), {
-        ...profile,
-        email: user.email || '',
-        updatedAt: new Date().toISOString(),
-      });
+      await saveProfile(profile);
       setEditMode(false);
     } catch (err) {
       setError('Failed to save profile.');
@@ -173,7 +167,7 @@ export default function Dashboard() {
     
     setDeleting(true);
     try {
-      await deleteDoc(doc(db, 'interviewFeedbacks', item.id));
+      await deleteInterview(item.id);
       // Remove from local state
       setInterviewHistory(prev => prev.filter(historyItem => historyItem.id !== item.id));
       setDeleteModalOpen(false);
@@ -227,150 +221,23 @@ export default function Dashboard() {
     return 'N/A';
   };
 
-  // Ensure user email is set in sessionStorage for interview tracking
+  // Fetch interview history on mount. The server only returns the logged-in user's interviews, newest first.
   React.useEffect(() => {
-    if (user?.email) {
-      sessionStorage.setItem('userEmail', user.email);
-      console.log('User email set in sessionStorage:', user.email);
-    }
-  }, [user?.email]);
-
-  // Fetch interview history on mount
-  React.useEffect(() => {
-    const fetchHistory = async () => {
-      if (!email || !user) {
-        console.log('No email or user available:', { email, user: !!user });
-        return;
-      }
-      console.log('Fetching interview history for:', { email, userId: user.uid });
-      setLoadingHistory(true);
-      try {
-        // First try the new server-side filtering approach
-        try {
-          // Query for documents where user field matches current user email
-          const userQuery = query(
-            collection(db, 'interviewFeedbacks'),
-            where('user', '==', email),
-            orderBy('timestamp', 'desc')
-          );
-          
-          const userSnapshot = await getDocs(userQuery);
-          console.log('User query results:', userSnapshot.docs.length);
-          
-          // For now, let's use the simpler approach and filter on client side
-          // since the nested field query might not work as expected
-          const allQuery = query(
-            collection(db, 'interviewFeedbacks'),
-            orderBy('timestamp', 'desc')
-          );
-          
-          const allSnapshot = await getDocs(allQuery);
-          const allData = allSnapshot.docs.map(doc => ({ 
-            id: doc.id, 
-            ...doc.data() 
-          })) as InterviewHistoryItem[];
-          
-          console.log('Current user email:', email);
-          console.log('Total feedbacks found:', allData.length);
-          
-          // Debug: Log each document to see the structure
-          allData.forEach((item, index) => {
-            console.log(`Document ${index + 1}:`, {
-              id: item.id,
-              user: item.user,
-              userInputsEmail: item.userInputs?.email,
-              timestamp: item.timestamp
-            });
-          });
-          
-          // Filter data to only show current user's feedback
-          const filteredData = allData.filter(item => {
-            const userMatch = item.user === email;
-            const userInputsMatch = item.userInputs?.email === email;
-            const sessionUserEmail = sessionStorage.getItem('userEmail');
-            const sessionMatch = item.user === sessionUserEmail;
-            
-            const isMatch = userMatch || userInputsMatch || sessionMatch;
-            console.log(`Filtering item ${item.id}:`, {
-              user: item.user,
-              userInputsEmail: item.userInputs?.email,
-              sessionEmail: sessionUserEmail,
-              currentEmail: email,
-              userMatch,
-              userInputsMatch,
-              sessionMatch,
-              isMatch
-            });
-            
-            return isMatch;
-          });
-          
-          console.log('Filtered feedbacks for user:', filteredData.length);
-          setInterviewHistory(filteredData);
-          setCurrentPage(0);
-          
-        } catch (queryError) {
-          console.error('Server-side query failed, falling back to client-side filtering:', queryError);
-          
-          // Fallback to the old method
-          const q = query(
-            collection(db, 'interviewFeedbacks'),
-            orderBy('timestamp', 'desc')
-          );
-          const querySnapshot = await getDocs(q);
-          const allData = querySnapshot.docs.map(doc => ({ 
-            id: doc.id, 
-            ...doc.data() 
-          })) as InterviewHistoryItem[];
-          
-          console.log('Fallback - Current user email:', email);
-          console.log('Fallback - Total feedbacks found:', allData.length);
-          
-          // Debug: Log each document to see the structure
-          allData.forEach((item, index) => {
-            console.log(`Fallback Document ${index + 1}:`, {
-              id: item.id,
-              user: item.user,
-              userInputsEmail: item.userInputs?.email,
-              timestamp: item.timestamp
-            });
-          });
-          
-          // Filter data to only show current user's feedback
-          const filteredData = allData.filter(item => {
-            const userMatch = item.user === email;
-            const userInputsMatch = item.userInputs?.email === email;
-            const sessionUserEmail = sessionStorage.getItem('userEmail');
-            const sessionMatch = item.user === sessionUserEmail;
-            
-            const isMatch = userMatch || userInputsMatch || sessionMatch;
-            console.log(`Fallback Filtering item ${item.id}:`, {
-              user: item.user,
-              userInputsEmail: item.userInputs?.email,
-              sessionEmail: sessionUserEmail,
-              currentEmail: email,
-              userMatch,
-              userInputsMatch,
-              sessionMatch,
-              isMatch
-            });
-            
-            return isMatch;
-          });
-          
-          console.log('Fallback - Filtered feedbacks for user:', filteredData.length);
-          setInterviewHistory(filteredData);
-          setCurrentPage(0);
-        }
-        
-      } catch (err) {
-        console.error('Failed to fetch interview history:', err);
-      } finally {
-        setLoadingHistory(false);
-      }
+    if (!user) return;
+    let active = true;
+    setLoadingHistory(true);
+    listInterviews()
+      .then((items) => {
+        if (!active) return;
+        setInterviewHistory(items as unknown as InterviewHistoryItem[]);
+        setCurrentPage(0);
+      })
+      .catch((err) => console.error('Failed to fetch interview history:', err))
+      .finally(() => active && setLoadingHistory(false));
+    return () => {
+      active = false;
     };
-    fetchHistory();
-  }, [email, user]);
+  }, [user]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 relative overflow-x-hidden">

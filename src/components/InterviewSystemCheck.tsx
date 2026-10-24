@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { BrainCircuit, Mic, Video, CheckCircle, XCircle, Info, Lightbulb, Globe } from 'lucide-react';
+import { BrainCircuit, Mic, Video, CheckCircle, XCircle, Info, Lightbulb, Globe, Cpu, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { API_ENDPOINTS, apiFetch } from '../config/api';
 
 export default function InterviewSystemCheck() {
   const { logout } = useAuth();
@@ -20,29 +21,37 @@ export default function InterviewSystemCheck() {
   const animationRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Check browser type - Support all modern browsers
-  const checkBrowser = () => {
-    const userAgent = navigator.userAgent;
-    // Check if it's a modern browser (Chrome, Edge, Firefox, Brave, Opera, etc.)
-    const isModernBrowser = !!/Chrome|Firefox|Safari|Edge|Edg|OPR/.test(userAgent);
+  // Local AI model status from /api/health
+  const [aiStatus, setAiStatus] = useState<'checking' | 'ready' | 'offline' | 'missing'>('checking');
+  const [aiModel, setAiModel] = useState('');
 
-    if (isModernBrowser) {
+  const checkAiModel = async () => {
+    setAiStatus('checking');
+    try {
+      const { ollama } = await apiFetch<{ ollama: { reachable: boolean; model: string; modelInstalled: boolean } }>(API_ENDPOINTS.HEALTH);
+      setAiModel(ollama.model);
+      setAiStatus(!ollama.reachable ? 'offline' : ollama.modelInstalled ? 'ready' : 'missing');
+    } catch {
+      setAiStatus('offline');
+    }
+  };
+
+  // Answers are captured with the Web Speech API, which Chrome and Edge support
+  const checkBrowser = () => {
+    const hasSpeechRecognition = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
+
+    if (hasSpeechRecognition) {
       setIsChrome(true);
     } else {
       setIsChrome(false);
-      setBrowserError('Please use a modern browser (Chrome, Firefox, Edge, Brave, Opera).');
+      setBrowserError('Speech recognition is not supported here. Please use Google Chrome or Microsoft Edge.');
     }
   };
 
   useEffect(() => {
-    // Check browser first
+    // Check browser and the local AI model first
     checkBrowser();
-
-    // Store Gemini API key from environment
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (apiKey) {
-      sessionStorage.setItem('geminiApiKey', apiKey);
-    }
+    checkAiModel();
 
     // Parallel device checks for faster loading
     const checkDevices = async () => {
@@ -318,6 +327,43 @@ export default function InterviewSystemCheck() {
                 </div>
               </div>
 
+              {/* Local AI model check */}
+              <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-700 mb-3" aria-live="polite">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-violet-400" aria-hidden="true" />
+                    <span className="text-sm font-semibold text-white">AI Interviewer</span>
+                    {aiModel && <span className="text-xs text-slate-400 font-mono">({aiModel})</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {aiStatus === 'checking' && <span className="text-xs text-slate-400">Checking...</span>}
+                    {aiStatus === 'ready' && (
+                      <>
+                        <span className="text-sm text-green-400 font-semibold">Ready</span>
+                        <CheckCircle className="w-4 h-4 text-green-400" aria-hidden="true" />
+                      </>
+                    )}
+                    {(aiStatus === 'offline' || aiStatus === 'missing') && (
+                      <>
+                        <span className="text-xs text-red-400 text-right">
+                          {aiStatus === 'offline'
+                            ? 'Ollama is not running. Start it with "ollama serve".'
+                            : `Model missing. Run "ollama pull ${aiModel}".`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={checkAiModel}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-200 bg-slate-700 hover:bg-slate-600 transition-colors"
+                        >
+                          <RefreshCw className="w-3 h-3" aria-hidden="true" />
+                          Retry
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Instructions and Tips in 2 columns - Improved Design */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div className="bg-gradient-to-br from-violet-500/10 to-purple-500/10 rounded-xl p-3 border border-violet-500/20 backdrop-blur-sm">
@@ -382,7 +428,7 @@ export default function InterviewSystemCheck() {
                   type="button"
                   className="group relative px-8 py-2.5 rounded-xl font-semibold text-white text-sm bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 shadow-lg shadow-violet-500/20 hover:shadow-violet-500/40 transition-all duration-300 hover:scale-[1.02] overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                   onClick={() => navigate('/livesession')}
-                  disabled={isChrome === false || camAllowed !== true || micAllowed !== true}
+                  disabled={isChrome === false || camAllowed !== true || micAllowed !== true || aiStatus !== 'ready'}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-violet-400 to-indigo-400 opacity-0 group-hover:opacity-20 blur-xl transition-opacity duration-300"></div>
                   <span className="relative z-10">Start Interview</span>
