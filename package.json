@@ -1,0 +1,44 @@
+{
+  "name": "prepmate",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx vite",
+    "dev:full": "concurrently \"node server.js\" \"npm run dev\"",
+    "build": "vite build",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "preview": "npx vite preview",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "10.4.21",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "firebase": "^11.10.0",
+    "framer-motion": "^12.23.0",
+    "lottie-react": "^2.4.1",
+    "lucide-react": "^0.441.0",
+    "pdfjs-dist": "5.7.284",
+    "postcss": "8.5.6",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.6.3",
+    "tailwindcss": "3.4.17",
+    "terser": "^5.29.2",
+    "typescript": "^5.5.4",
+    "vite": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.18",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@typescript-eslint/eslint-plugin": "^5.54.0",
+    "@typescript-eslint/parser": "^5.54.0",
+    "concurrently": "^9.2.0",
+    "eslint": "^8.50.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.1"
+  }
+}
