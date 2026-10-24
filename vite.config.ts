@@ -9,7 +9,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        // 127.0.0.1, not localhost: Node may resolve localhost to IPv6 (::1) while the API binds IPv4
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
         secure: false,
       },

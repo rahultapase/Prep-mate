@@ -15,6 +15,7 @@ import { FeaturesSection } from './components/FeaturesSection';
 import { HowItWorksSection } from './components/HowItWorksSection';
 import { Footer } from './components/Footer';
 import { useAuth } from './hooks/useAuth';
+import { AuthProvider } from './context/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Lazy load auth pages with better chunking
@@ -117,6 +118,7 @@ function LandingPage() {
 export function App() {
   return (
     <ErrorBoundary>
+      <AuthProvider>
       <Router>
         {/* Mobile Blocker Overlay
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-900 text-white text-center px-6 md:hidden">
@@ -139,6 +141,7 @@ export function App() {
           </Routes>
         </Suspense>
       </Router>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }
